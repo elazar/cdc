@@ -104,6 +104,7 @@ if (is_file($pattern)) {
         }
     }
 }
+sort($files);
 
 // Initialize the starting point of the current code block (0 for none)
 $start = 0;
