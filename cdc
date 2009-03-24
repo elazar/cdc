@@ -188,7 +188,6 @@ foreach ($files as $file) {
 
         // If the line contains a URL, confirm it is accessible
         if ($url && preg_match('/http:\/\/[\w\/.?&=\-]+/', $line, $match)) {
-            echo 'Found URL: ';
             $address = rtrim($match[0], '.');
             if ($fp = @fopen($address, 'r')) {
                 $meta = stream_get_meta_data($fp);
