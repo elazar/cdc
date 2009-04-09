@@ -1,4 +1,4 @@
-#!/usr/bin/php
+#!/home/matt/Documents/Work/php-5.3.0RC1/build/php_build/bin/php
 <?php
 
 /**
@@ -16,6 +16,8 @@
  * OPTIONS:
  *    -a
  *        Article mode, implies -c 60 -l 10 -x
+ *    -A
+ *        Include hidden files and directories, which are excluded by default
  *    -b
  *        Book mode, implies -c 70 -p 375
  *    -c # 
@@ -33,6 +35,7 @@
 
 // Parse arguments
 $exclude = false;
+$hidden = false;
 $url = false;
 $pattern = '*';
 $perpage = null;
@@ -44,6 +47,10 @@ while (next($argv)) {
             $climit = 60;
             $llimit = 10;
             $exclude = true;
+            break;
+
+        case '-A':
+            $hidden = true;
             break;
 
         case '-b':
@@ -96,7 +103,7 @@ if (is_file($pattern)) {
     );
     $files = array();
     foreach ($iterator as $entry) {
-        if (strpos($entry->getPath(), DIRECTORY_SEPARATOR . '.')) {
+        if (strpos($entry->getPathname(), DIRECTORY_SEPARATOR . '.') && !$hidden) {
             continue;
         }
         if ($entry->isFile() && ($dir xor fnmatch($pattern, $entry->getPathname()))) {
@@ -145,7 +152,12 @@ foreach ($files as $file) {
 
                 // Perform a lint check on the segments
                 $code = implode('', $matches[0]);
-                $response = shell_exec('echo ' . escapeshellarg($code) . ' | php -l');
+                $process = proc_open('php -l', array(0 => array('pipe', 'r'), 1 => array('pipe', 'w')), $pipes);
+                fwrite($pipes[0], $code);
+                fclose($pipes[0]);
+                $response = stream_get_contents($pipes[1]);
+                fclose($pipes[1]);
+                proc_close($process);
 
                 // If any syntax errors are found, display them
                 if (strpos($response, 'No syntax errors detected') === false) {
