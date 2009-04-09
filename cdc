@@ -1,4 +1,4 @@
-#!/home/matt/Documents/Work/php-5.3.0RC1/build/php_build/bin/php
+#!/usr/bin/php
 <?php
 
 /**
