@@ -6,11 +6,11 @@
  *
  * Usage: cdc [OPTIONS] [PATTERN]
  *
- * Analyzes various aspects of a document in the Ceres format.
+ * Analyzes various aspects of one or more documents in the Ceres format.
  *
  * PATTERN can be a file path, directory path, or pattern referring to one 
  * or more Ceres-formatted documents. Directory paths and patterns will 
- * automatically be recursed. If unspecified, defaults to the current 
+ * automatically be recursed. If unspecified, it defaults to the current 
  * directory. 
  *
  * OPTIONS:
@@ -61,21 +61,24 @@ while (next($argv)) {
         case '-c':
             $climit = next($argv);
             if ($climit <= 0 || (int) $climit != $climit) {
-                exit('cdc: Parameter to -c must be a positive integer, ' . $climit . ' was specified' . PHP_EOL);
+                echo 'cdc: Parameter to -c must be a positive integer, ', $climit, ' was specified', PHP_EOL;
+                exit(1);
             }
             break;
 
         case '-l':
             $llimit = next($argv);
             if ($llimit <= 0 || (int) $llimit != $llimit) {
-                exit('cdc: Parameter to -l must be a positive integer, ' . $llimit . ' was specified' . PHP_EOL);
+                echo 'cdc: Parameter to -l must be a positive integer, ', $llimit, ' was specified', PHP_EOL;
+                exit(1);
             }
             break;
 
         case '-p':
             $perpage = next($argv);
             if ($perpage <= 0 || (int) $perpage != $perpage) {
-                exit('cdc: Parameter to -p must be a positive integer, ' . $perpage . ' was specified' . PHP_EOL);
+                echo 'cdc: Parameter to -p must be a positive integer, ', $perpage, ' was specified', PHP_EOL;
+                exit(1);
             }
             break;
 
@@ -125,6 +128,12 @@ foreach ($files as $file) {
     // Initialize a word accumulator
     $words = 0;
 
+    // Initialize a flag indicating a PHP code block 
+    $php = false;
+
+    // Output the file path
+    echo $file, PHP_EOL;
+
     // For each line in the current file...
     foreach (file($file) as $key => $line) {
 
@@ -144,35 +153,48 @@ foreach ($files as $file) {
             // Reset the code buffer
             $code = '';
 
+            // Reset the PHP code block flag
+            $php = (strpos($line, ' php>') !== false);
+
         // If the line ends a code block...
         } elseif (strpos($line, '</code>') === 0) {
 
             // If any PHP segments are found in the code block...
             if (preg_match_all('/<\?php.*(?:\?>|$)/UsS', $code, $matches)) {
 
-                // Perform a lint check on the segments
-                $code = implode('', $matches[0]);
-                $process = proc_open('php -l', array(0 => array('pipe', 'r'), 1 => array('pipe', 'w')), $pipes);
-                fwrite($pipes[0], $code);
-                fclose($pipes[0]);
-                $response = stream_get_contents($pipes[1]);
-                fclose($pipes[1]);
-                proc_close($process);
+                // If the block is not flagged as PHP, output a notice and continue
+                if (!$php) {
+                    echo $start, ': NOTICE - Code block not specified as PHP, but contains PHP tags', PHP_EOL;
 
-                // If any syntax errors are found, display them
-                if (strpos($response, 'No syntax errors detected') === false) {
-                    $response = preg_replace(
-                        '/in - on line ([0-9]+)$/e', 
-                        '\'in ' . $file . ' on line \' . ($1 + ' . $start . ')',
-                        trim(str_replace('Errors parsing -', '', $response))
-                   );
-                   echo $response, PHP_EOL;
+                // If the block is PHP code...
+                } else {
+
+                    // Perform a lint check on the segments
+                    $code = implode('', $matches[0]);
+                    $process = proc_open('php -l', array(0 => array('pipe', 'r'), 1 => array('pipe', 'w')), $pipes);
+                    fwrite($pipes[0], $code);
+                    fclose($pipes[0]);
+                    $response = stream_get_contents($pipes[1]);
+                    fclose($pipes[1]);
+                    proc_close($process);
+
+                    // If any syntax errors are found, display them
+                    if (strpos($response, 'No syntax errors detected') === false
+                        && preg_match('/in - on line ([0-9]+)/', $response, $match)) {
+                        $errline = (int) $match[1] + $start;
+                        $response = trim(str_replace(
+                            array('Errors parsing -', 'syntax error, ', $match[0]),
+                            array('', '', ''),
+                            $response
+                        ));
+                        echo $errline, ': ERROR - ', $response, PHP_EOL;
+                    }
                 }
             }
 
-            // If the line exceeds the specified line limit, display an error
+            // If the line count exceeds the specified line limit, display an error
             if (isset($llimit) && $length > $llimit) {
-                echo 'Formatting error: Length ', $length, ' exceeds limit of ', $llimit, ' in ', $file, ' on line ', $start, PHP_EOL;
+                echo $no, ': ERROR - Line count ', $length, ' exceeds limit of ', $llimit, PHP_EOL;
             }
 
             // Reset the starting point to indicate no code block is active 
@@ -183,7 +205,7 @@ foreach ($files as $file) {
 
             // If the line exceeds the specified width limit, display an error 
             if (isset($climit) && $width > $climit) {
-                echo 'Formatting error: Width ', $width, ' exceeds limit of ', $climit, ' in ', $file, ' on line ', $no, PHP_EOL;
+                echo $no, ': ERROR - Line width ', $width, ' exceeds limit of ', $climit, PHP_EOL;
             }
 
             // Increment a line counter
@@ -205,16 +227,16 @@ foreach ($files as $file) {
                 $meta = stream_get_meta_data($fp);
                 $status = explode(' ', $meta['wrapper_data'][0]);
                 $status = $status[1];
-                echo 'Found URL: ', $status, ' ', $address, PHP_EOL;
+                echo $start, ': NOTICE - Found URL ', $address, ' with response status ', $status, PHP_EOL;
             } else {
-                echo 'Failed ', $address, PHP_EOL;
+                echo $start, ': ERROR - Found URL ', $address, ' but could not access', PHP_EOL;
             }
             sleep(0.5);
         }
     }
 
     // Display the word count for the current file
-    echo 'File counts: ', counts($words, $perpage), ' in ', $file, PHP_EOL; 
+    echo 'Counts: ', counts($words, $perpage), PHP_EOL, PHP_EOL;
 
     // Update the total word count accumulator
     $totalwords += $words;
